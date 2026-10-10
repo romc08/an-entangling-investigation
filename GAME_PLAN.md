@@ -27,7 +27,7 @@ SELECT DEVICE → SET INSTRUMENT → PREDICT → UNCOVER MEASUREMENTS → COMPAR
 
 ### Instrument interaction
 
-- Click Device A or B to select it. Both must share identical artwork, animation, sounds and status indicators before evidence is revealed; cosmetic differences must not leak the hidden assignment.
+- Click Device A or B to open its analyzer. The supplied amber and green sprites distinguish the fixed device labels only; their appearance is independent of randomized preparation truth and cannot serve as evidence.
 - Turn a linked pair of measurement dials between two marked detents: original view (Z/Z) and rotated view (X/X). Labels explain both Left and Right settings. The apparatus supports these two presets for this milestone; free-angle dials would imply uncollected experiments.
 - Choose a prediction using three illustrated tokens: mostly matching, roughly half matching, or unsure. Selecting a token and a slot by clicking is sufficient; drag-and-drop is optional.
 - Pull a large lever to uncover the selected result. Give the device a brief light/scan animation and show the detector's outcome bins filling.
@@ -162,11 +162,11 @@ Cut order if time is tight: ambient sound → extra sprite animation → elabora
 
 ## Acceptance checklist
 
-Current implementation: direct Play → workbench, CSS placeholder objects, native dialog overlays, prediction tokens, lever/readout, ticket comparison and observation/reasoning choices. Cutscene, museum transition and final pixel art are intentionally deferred at the user's request. Platform smoke testing remains pending; no new asset-loading dependency was introduced.
+Current implementation: direct Play → full-window sprite workbench; user-supplied devices, rotary phone, notebook and background; matching metal/paper panels with local typewriter fonts. Device sprites open analyzers; notebook/phone/report open their respective panels. Embedded WebP modules avoid relative image fetches. Source artwork is preserved. Cutscene and museum transition remain deferred. Actual Qollab image decoding and runtime checks remain pending.
 
 - [x] Existing baseline preserved in Git before replacing the presentation (`728ddf9`).
 - [ ] Play → museum → overhead workbench works; intro is skippable.
-- [ ] All game screens and controls use a coherent pixel-art style.
+- [x] Sprite scene and retro controls/panels share the supplied artwork's palette; readable local typewriter fonts are used.
 - [x] Main play happens through workbench objects, with notebook/Trace/report overlays.
 - [x] Both devices and both measurement presets support a prediction before reveal.
 - [x] Results and animation agree with the result bank; repeat clicks/replay never send another job.
@@ -177,7 +177,7 @@ Current implementation: direct Play → workbench, CSS placeholder objects, nati
 - [ ] Keyboard, skip, reduced-motion, loading and error paths are checked.
 - [ ] Actual Qollab built-in and IonQ remote-simulator runs are documented honestly.
 - [x] Existing quantum/statistical tests still pass; meaningful new interaction/state tests pass (13 Python, 12 JavaScript).
-- [x] MIT license and Qollab/IonQ attribution remain available; no third-party art has been added yet.
+- [x] MIT code license and Qollab/IonQ attribution remain available; supplied sprite provenance is recorded in ART_CREDITS.md.
 
 ## References
 

@@ -7,3 +7,5 @@ dev/*.png
 dev/*.jpg
 dev/verification.json
 README.draft.md
+AGENTS.md
+GAME_PLAN.md

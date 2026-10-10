@@ -5,7 +5,9 @@
 - `dev/index.html` and `dev/main.js` use the shared UI with explicit sample data. No Python imports may enter that dependency graph.
 - One session, one result bank, one backend job containing all 24 circuits. Repeat Bell twice per setting to match the mixture's combined shot total and avoid a shot-count clue. Never retry automatically or silently substitute samples. Stop and Run again after a Qollab failure.
 - Keep hidden truth and the result bank inside `game.js` closures. Trace gets only discovered evidence and progress. No browser storage or external chatbot.
-- `workbench.js` owns apparatus selection and readout locking; it only uncovers existing records, never submits jobs. Skip and animation-end must be idempotent. Preserve native button hit targets when replacing CSS placeholder graphics.
+- `workbench.js` owns apparatus selection and readout locking; it only uncovers existing records, never submits jobs. Skip, animation-end and the UI's close-safe timer must finish idempotently. Closing a panel cannot strand a readout or erase notebook drafts.
+- `assets.js` imports embedded WebP data URLs from `art/`. Upload these modules to Qollab, not the oversized originals in `sprites/`. `dev/package_sprites.py` is optional offline preparation using Pillow; no build step is needed to run. Preserve source artwork. Sprite A/B colors are fixed cosmetics, independent of randomized case truth.
+- The scene fills the project viewport. Keep native sprite button hit targets, readable typewriter text and retro metal/paper panels; do not restore a dashboard/page wrapper or add remote font/image dependencies.
 - Notebook, Trace and report use native dialog overlays with Escape/focus return. Observation and reasoning tiles are explicit player choices; personal prose is optional. Keep Play → workbench direct until the cutscene stage is requested.
 - Qubit 0 = Left, qubit 1 = Right; reverse Qiskit's `c1c0` count keys once in Python. UI keys always mean Left then Right.
 - Mixture = separately measured 00 and 11 branches with equal shots; combine counts and report their actual total. Never use a coherent superposition or ancilla.
