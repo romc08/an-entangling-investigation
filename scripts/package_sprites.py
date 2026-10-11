@@ -18,6 +18,7 @@ SOURCES = {
     "notebook": "notebook transparent.png",
     "workbench": "workbench.jpg",
     "report": "final report transparent.png",
+    "magnifier": "magnifying glass transparent.png",
     **{f"evidence{i}": f"evidence card {i} transparent.png" for i in range(1, 5)},
     **{f"label{i}": f"new label {i} transparent.png" for i in range(1, 6)},
 }
@@ -38,7 +39,7 @@ for name, source in SOURCES.items():
         if name.startswith("label"):
             # Labels display at ~180px. Package a crisp nearest-neighbor copy.
             image.thumbnail((768, 256), Image.Resampling.NEAREST)
-        if name == "report" or name.startswith("evidence"):
+        if name in ("report", "magnifier") or name.startswith("evidence"):
             image.thumbnail((768, 512), Image.Resampling.NEAREST)
         buffer = BytesIO()
         # Lossless sprites keep the supplied pixels and alpha exactly.

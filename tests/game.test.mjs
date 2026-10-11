@@ -6,6 +6,41 @@ import { createTrace } from '../src/assistant.js';
 import { summarizeCounts, validateBank, assessReport } from '../src/evidence.js';
 import { createQollabAdapter } from '../src/qollab-adapter.js';
 import { createSampleAdapter } from '../dev/sample-adapter.js';
+import { inspectionDistribution, inspectionPanel } from '../src/inspection.js';
+
+test('inspection sums asymmetric Left/Right counts without reversing bits or losing shots', () => {
+  const counts = Object.freeze({ '00': 1, '01': 2, '10': 3, '11': 4 });
+  assert.deepEqual(inspectionDistribution(counts, 'left').map(x => x.count), [3, 7]);
+  assert.deepEqual(inspectionDistribution(counts, 'right').map(x => x.count), [4, 6]);
+  assert.deepEqual(inspectionDistribution(counts).map(x => x.count), [1, 2, 3, 4]);
+  for (const view of ['left', 'right', 'together']) {
+    assert.equal(inspectionDistribution(counts, view).reduce((sum, x) => sum + x.count, 0), 10);
+    assert.ok(Math.abs(inspectionDistribution(counts, view).reduce((sum, x) => sum + x.fraction, 0) - 1) < 1e-12);
+  }
+  assert.throws(() => inspectionDistribution({ '00': 0, '01': 0, '10': 0, '11': 0 }), /No valid/);
+  assert.throws(() => inspectionDistribution({ ...counts, '00': -1 }), /nonnegative/);
+  assert.throws(() => inspectionDistribution(counts, 'unknown'), /Unknown/);
+});
+
+test('inspection uses discovered evidence without changing filing, drafts or submitting a job', async () => {
+  let calls = 0;
+  const game = createGame({ load: () => { calls++; return sample().load(); } }, () => 0);
+  game.start(); await game.load();
+  const row = game.reveal('A', 'xx', 'matching');
+  game.interpret(row.id, 'Matching persists in the rotated view.');
+  game.moveEvidence(row.id, 'notebook');
+  const before = game.snapshot();
+  for (const view of ['left', 'right', 'together']) {
+    const html = inspectionPanel(before.evidence[0], view);
+    assert.match(html, /Development sample/);
+    assert.match(html, /Laboratory record/);
+    assert.doesNotMatch(html, /CNOT|source.*bell|bank/i);
+  }
+  assert.deepEqual(game.snapshot(), before);
+  assert.equal(calls, 1);
+  const untrusted = { ...row, provenance: { kind: 'selected-backend', label: '<img src=x>' } };
+  assert.match(inspectionPanel(untrusted), /&lt;img src=x&gt;/);
+});
 
 const sample = () => createSampleAdapter({ delay: 0 });
 async function ready(random = () => 0) {
