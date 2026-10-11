@@ -48,6 +48,15 @@ export function createGame(adapter, random = Math.random) {
     },
     submitReport(report) {
       const feedback = assessReport(report, progress.evidence);
+      // A solved case requires both supporting evidence and the authored truth.
+      // Only the verdict leaves this closure; failed attempts reveal no answer.
+      if (feedback.outcome === 'supported') {
+        feedback.outcome = truth[report.conclusion] === 'bell' ? 'solved' : 'revise';
+        if (feedback.outcome === 'revise') {
+          feedback.title = 'The archive cannot confirm this identification.';
+          feedback.message = 'These measurements conflict with the case record. Keep the case open and review your evidence.';
+        }
+      }
       progress.report = { ...JSON.parse(JSON.stringify(report)), feedback };
       return feedback;
     },
