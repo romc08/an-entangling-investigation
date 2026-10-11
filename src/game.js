@@ -31,8 +31,22 @@ export function createGame(adapter, random = Math.random) {
       const old = progress.evidence.find(row => row.id === `${device}-${testId}`);
       if (old) return JSON.parse(JSON.stringify(old));
       const row = makeEvidence(device, testId, bank.bank[truth[device]][testId], bank.provenance, prediction);
+      const index = progress.evidence.length;
+      row.card = { number: index + 1, location: 'desk', x: index % 2 ? .74 : .26, y: index < 2 ? .27 : .76 };
       progress.evidence.push(row);
       return JSON.parse(JSON.stringify(row));
+    },
+    moveEvidence(id, location, position) {
+      const row = progress.evidence.find(item => item.id === id);
+      if (!row) throw Error('Uncover this evidence first.');
+      if (!['desk', 'notebook', 'report'].includes(location)) throw Error('Choose the desk, notebook, or report.');
+      if (position && (!Number.isFinite(position.x) || !Number.isFinite(position.y))) throw Error('Invalid card position.');
+      row.card.location = location;
+      if (position) {
+        row.card.x = Math.max(.24, Math.min(.76, position.x));
+        row.card.y = Math.max(.22, Math.min(.78, position.y));
+      }
+      progress.report = null;
     },
     interpret(id, text) {
       const row = progress.evidence.find(item => item.id === id);
@@ -47,7 +61,9 @@ export function createGame(adapter, random = Math.random) {
       progress.report = null;
     },
     submitReport(report) {
-      const feedback = assessReport(report, progress.evidence);
+      const attached = progress.evidence.filter(row => row.card.location === 'report');
+      if (report.citations?.some(id => !attached.some(row => row.id === id))) throw Error('Move the cited evidence cards onto the final report first.');
+      const feedback = assessReport(report, attached);
       // A solved case requires both supporting evidence and the authored truth.
       // Only the verdict leaves this closure; failed attempts reveal no answer.
       if (feedback.outcome === 'supported') {

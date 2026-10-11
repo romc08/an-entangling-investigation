@@ -21,7 +21,7 @@ export function createTrace() {
       'Keep this run open until the batch is ready. You can then record a prediction and uncover a result without sending another job.',
     ];
     else if (!row) steps = [
-      'The notebook is empty. A device label is not evidence about its preparation.',
+      'No evidence has been uncovered. A device label is not evidence about its preparation.',
       'What would matching outputs in the original setting tell you, if both candidates can produce them?',
       'Choose a device and Z/Z, record a prediction, then uncover its result. Compare with the other device before changing settings.',
     ];
@@ -41,7 +41,7 @@ export function createTrace() {
       missing ? 'There are still unopened measurements in the lab batch.' : 'All four records are uncovered. Your interpretations are the remaining part of the evidence.',
       missing ? 'Which unopened setting would test an assumption in your current theory?' : 'Can you explain why Z/Z was insufficient and which X/X comparison supports your conclusion?',
       missing ? `Try Device ${missing.device} in ${missing.test.toUpperCase()}. Predict first, then compare the counts with your expectation.`
-        : 'Save your interpretations, open the final report, and cite the records you used. Choose insufficient evidence if the patterns remain ambiguous.',
+        : 'Mark your observations, then move the evidence cards onto the final report and cite them. Cards filed in the notebook can be returned to the desk. Choose insufficient evidence if the patterns remain ambiguous.',
     ];
     return { stage: ['Observation', 'Question', 'Suggestion'][level], text: steps[level] };
   };
