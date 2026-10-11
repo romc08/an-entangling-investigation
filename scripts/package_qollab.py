@@ -25,6 +25,7 @@ def package_project():
                  "assets/art/notebook.js", "assets/art/workbench.js", "assets/art/report.js",
                  "assets/art/evidence1.js", "assets/art/evidence2.js", "assets/art/evidence3.js", "assets/art/evidence4.js",
                  "src/ui.js", "src/desk-cards.js", "src/typewriter.js", "assets/media/intro.js",
+                 "src/magnifier.js", "src/inspection.js", "assets/art/magnifier.js",
                  "quantum/experiments.py", "quantum/analysis.py"):
         if root / name not in files:
             raise ValueError(f"Missing runtime file: {name}")

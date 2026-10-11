@@ -308,7 +308,58 @@ input[type=radio], input[type=checkbox] { accent-color: #645a30; width: 18px; he
 .attached-evidence { padding: 5px 0 12px; border-bottom: 1px solid #96765055; }
 .attached-evidence .secondary { padding: 5px 8px; font-size: 12px; }
 #hint-response { min-height: 8em; }
+/* A brass lens and an amber inspection plate, using the collected shots only. */
+.magnifier-object { left: 28%; top: 65%; width: 12%; height: 13%; touch-action: none; cursor: grab; z-index: 3; }
+.magnifier-object > .sprite { height: 100%; width: 100%; }
+.magnifier-object.dragging { z-index: 20; cursor: grabbing; }
+.magnifier-prompt { display: none; position: absolute; left: 0; right: 0; bottom: -22px; color: #fff0bd; font: italic 13px Georgia, serif; text-shadow: 1px 2px 2px #000; white-space: nowrap; }
+.magnifier-selected .magnifier-prompt { display: block; }
+.magnifier-selected .evidence-card { outline: 2px dashed #d2b76c; outline-offset: 3px; cursor: zoom-in; }
+.evidence-card.inspect-hover { outline: 3px solid #ffe3a5; filter: drop-shadow(0 0 9px #edc36c); }
+#desk-dialog[data-panel=inspection] { width: min(620px, calc(100% - 28px)); border: 9px ridge #957343; border-radius: 10px; background: repeating-linear-gradient(90deg, #0000 0 3px, #0001 4px 5px), #33372b; color: #f2dfb6; }
+#desk-dialog[data-panel=inspection] .dialog-header { background: #24271e; border-bottom: 3px double #957343; color: #f2dfb6; padding: 14px 20px; }
+#desk-dialog[data-panel=inspection] .dialog-header h2 { font-size: 23px; font-style: italic; font-weight: normal; }
+#desk-dialog[data-panel=inspection] .close-panel { background: #24271e; border: 3px outset #957343; color: #f2dfb6; }
+#desk-dialog[data-panel=inspection] #dialog-body { padding: 18px 24px 20px; }
+.inspection-switch { display: flex; justify-content: center; gap: 12px; margin-bottom: 18px; }
+.inspection-switch button { flex: 1; max-width: 140px; min-height: 42px; background: #272a20; border: 4px outset #8c8966; color: #f2dfb6; font-family: Georgia, serif; }
+.inspection-switch button[aria-pressed=true] { border-style: inset; color: #ffe5a2; background: #4a432a; box-shadow: inset 0 0 12px #0008; }
+.inspection-screen { position: relative; overflow: hidden; border: 7px solid #181b15; outline: 2px ridge #a59569; border-radius: 14px; background: radial-gradient(ellipse at center, #2e3526, #12190f); padding: 12px 20px 8px; font-family: 'Courier New', monospace; box-shadow: inset 0 0 28px #000; }
+.inspection-screen::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(0deg, #0000 0 3px, #0002 3px 4px); }
+.inspection-axis { margin: 0 0 10px; text-align: center; letter-spacing: 3px; color: #dfd3ad; font-size: 12px; }
+.outcome-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.outcome-well { position: relative; isolation: isolate; overflow: hidden; min-height: 106px; padding: 12px; border: 1px solid #67775b; background: #10180ee0; color: #deead0; display: grid; grid-template-columns: 1fr auto; align-items: center; }
+.outcome-well.matching { color: #ffe1a0; border-color: #b4985e; }
+.outcome-well i { position: absolute; inset: auto 0 0; z-index: -1; height: var(--fill); background: #7b9a6744; border-top: 1px solid #98bb7c; animation: fill-observation .4s ease-out; }
+.outcome-well.matching i { background: #ce9e4555; border-top-color: #f3cf88; }
+.outcome-well b { font-size: 28px; letter-spacing: 3px; font-weight: normal; }
+.outcome-well span { font-size: 16px; }
+.outcome-well small { grid-column: 1 / -1; justify-self: end; font-size: 12px; text-align: right; background: #182012; padding: 0 3px; }
+.outcome-grid.single .outcome-well { min-height: 222px; align-content: center; gap: 14px; }
+.inspection-caption { margin: 12px 0 4px; text-align: center; font-size: 12px; color: #dfd3ad; }
+.amber-key { color: #ffd17c; }
+.inspection-footnote { color: #e3d2ae; font-size: 13px; font-style: italic; text-align: center; margin: 15px 0; }
+.inspection-slip { background: linear-gradient(100deg, #c6af80, #f0dfba 7%, #deca9e); color: #39291b; border-left: 4px solid #b19a6a; padding: 12px 17px; box-shadow: 3px 4px 0 #141710; }
+.inspection-slip summary { font-size: 16px; font-style: italic; font-weight: normal; }
+.inspection-slip dl { margin: 16px 0; }
+.inspection-slip dl > div { display: flex; justify-content: space-between; gap: 14px; padding: 7px 0; border-bottom: 1px solid #9d825655; font-size: 13px; }
+.inspection-slip dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
+.inspection-slip dt { flex-shrink: 0; }
+.inspection-slip p { font-size: 12px; line-height: 1.6; margin: 10px 0; }
+.inspection-back { display: block; background: none; border: 0; border-bottom: 1px solid #a18e63; color: #f2dfb6; padding: 7px 0; margin: 18px auto 0; font-style: italic; }
+@keyframes fill-observation { from { height: 0; } }
+@media (prefers-reduced-motion: reduce) { .outcome-well i { animation: none; } }
 @media (max-width: 540px) {
+  .magnifier-object { left: 36%; top: 58%; width: 23%; height: 13%; }
+  #desk-dialog[data-panel=inspection] #dialog-body { padding: 16px 12px; }
+  #desk-dialog[data-panel=inspection] .dialog-header { padding: 12px; }
+  #desk-dialog[data-panel=inspection] .dialog-header h2 { font-size: 20px; }
+  .inspection-screen { padding: 12px 9px 8px; }
+  .inspection-switch { gap: 7px; }
+  .inspection-switch button { padding: 8px 4px; }
+  .outcome-well { padding: 8px; gap: 8px; }
+  .outcome-well b { font-size: 22px; }.outcome-well span { font-size: 13px; }
+  .inspection-slip { padding: 12px; }.inspection-slip dl > div { flex-direction: column; gap: 3px; }.inspection-slip dd { text-align: left; }
   #evidence-cards { left: 17%; top: 36%; width: 66%; height: 17%; }
   .evidence-card { width: 42%; }
   .device-B, .notebook-object { top: 55%; }

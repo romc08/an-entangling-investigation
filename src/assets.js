@@ -14,7 +14,8 @@ import evidence1 from '../assets/art/evidence1.js';
 import evidence2 from '../assets/art/evidence2.js';
 import evidence3 from '../assets/art/evidence3.js';
 import evidence4 from '../assets/art/evidence4.js';
+import magnifier from '../assets/art/magnifier.js';
 
 export const ART = Object.freeze({ deviceA, deviceB, phone, notebook, workbench,
   label1, label2, label3, label4, label5, report,
-  evidence1, evidence2, evidence3, evidence4 });
+  evidence1, evidence2, evidence3, evidence4, magnifier });
