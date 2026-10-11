@@ -200,3 +200,73 @@ test('pinned observations are explicit, checked against evidence, and enable rep
   assert.equal(game.snapshot().report, null);
   assert.match(game.submitReport({ conclusion: 'insufficient', citations: ['A-xx'], reasoningId: 'limited' }).title, /open case/);
 });
+
+// The cinematic shell cannot duplicate the lab start or desk entry.
+import { createOpeningFlow } from '../scenes.js';
+import { parts, byteLength, sha256 } from '../media/intro.js';
+import { createHash } from 'node:crypto';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+
+function openingHarness(overrides = {}) {
+  const calls = [];
+  const effects = Object.fromEntries(['onStart', 'fadePlay', 'playFilm', 'stopFilm', 'fadeFilm', 'enterDesk', 'revealDesk', 'blocked'].map(name => [name, () => { calls.push(name); }]));
+  return { calls, flow: createOpeningFlow({ ...effects, ...overrides }) };
+}
+test('Play, skip and natural end are idempotent, with the expected fade order', async () => {
+  const { calls, flow } = openingHarness();
+  await flow.enter(); assert.deepEqual(calls, []);
+  const first = flow.start(); assert.equal(flow.start(), first); await first;
+  assert.equal(flow.phase(), 'film');
+  const enter = flow.enter(); assert.equal(flow.enter(), enter); await enter;
+  await flow.start(); await flow.enter();
+  assert.deepEqual(calls, ['onStart', 'fadePlay', 'playFilm', 'stopFilm', 'fadeFilm', 'enterDesk', 'revealDesk']);
+  assert.equal(flow.phase(), 'done');
+});
+test('skipping during the Play fade never starts the film afterward', async () => {
+  let release;
+  const { calls, flow } = openingHarness({ fadePlay: () => new Promise(resolve => { release = resolve; }) });
+  const starting = flow.start(); await flow.enter(); release(); await starting;
+  assert.ok(!calls.includes('playFilm'));
+  assert.equal(calls.filter(c => c === 'enterDesk').length, 1);
+});
+test('blocked playback remains skippable; a late playback rejection cannot reopen controls', async () => {
+  const a = openingHarness({ playFilm: async () => { throw Error('codec unavailable'); } });
+  await a.flow.start(); assert.equal(a.flow.phase(), 'film'); assert.ok(a.calls.includes('blocked'));
+  await a.flow.enter(); assert.equal(a.flow.phase(), 'done');
+  let reject;
+  const b = openingHarness({ playFilm: () => new Promise((_, no) => { reject = no; }) });
+  const pending = b.flow.start(); await Promise.resolve();
+  await b.flow.enter(); reject(Error('late play interruption')); await pending;
+  assert.ok(!b.calls.includes('blocked'));
+});
+test('verdicts distinguish solved, revise, and inconclusive without recollecting data', async () => {
+  let jobs = 0, draws = 0;
+  const game = createGame({ load: () => { jobs++; return sample().load(); } }, () => { draws++; return 0; });
+  await game.load(); game.start();
+  interpreted(game, 'A', 'xx'); interpreted(game, 'B', 'xx');
+  const report = { conclusion: 'B', citations: ['A-xx', 'B-xx'], reasoningId: 'compare' };
+  assert.equal(game.submitReport(report).outcome, 'revise');
+  assert.equal(game.submitReport({ ...report, conclusion: 'insufficient', reasoningId: 'limited' }).outcome, 'inconclusive');
+  assert.equal(game.submitReport({ ...report, conclusion: 'A' }).outcome, 'solved');
+  assert.equal(game.snapshot().evidence.length, 2);
+  await game.load(); assert.equal(jobs, 1); assert.equal(draws, 1);
+});
+test('a misleading bank cannot award a win to the wrong authored device', async () => {
+  const bank = await sample().load();
+  [bank.bank.bell.xx, bank.bank.mixture.xx] = [bank.bank.mixture.xx, bank.bank.bell.xx];
+  const game = createGame({ load: async () => bank }, () => 0);
+  await game.load(); interpreted(game, 'A', 'xx'); interpreted(game, 'B', 'xx');
+  const report = { conclusion: 'B', citations: ['A-xx', 'B-xx'], reasoningId: 'compare' };
+  assert.equal(assessReport(report, game.snapshot().evidence).outcome, 'supported');
+  assert.equal(game.submitReport(report).outcome, 'revise');
+});
+test('runtime media preserves the supplied film exactly; each asset module is below 2 MB', () => {
+  const film = Buffer.concat(parts.map(part => Buffer.from(part, 'base64')));
+  assert.equal(film.length, byteLength);
+  assert.equal(createHash('sha256').update(film).digest('hex'), sha256);
+  assert.deepEqual(film, readFileSync(new URL('../cutscenes/full_intro_cutscene.mp4', import.meta.url)));
+  for (const directory of ['art', 'media']) {
+    const folder = new URL(`../${directory}/`, import.meta.url);
+    for (const name of readdirSync(folder)) assert.ok(statSync(new URL(name, folder)).size < 2_000_000, `${directory}/${name} exceeds the upload budget`);
+  }
+});

@@ -94,7 +94,7 @@ export function assessReport(report, evidence) {
   }
   const cited = evidence.filter(row => report.citations?.includes(row.id) && hasInterpretation(row));
   if (!cited.length) throw Error('Cite at least one evidence record with a saved interpretation.');
-  if (report.conclusion === 'insufficient') return { title: 'An open case is a valid finding.',
+  if (report.conclusion === 'insufficient') return { outcome: 'inconclusive', title: 'An open case is a valid finding.',
     message: 'You recorded a limit to your conclusion. Identify what is missing or ambiguous in your reasoning. You can return to the workbench and revise this report.' };
   const xx = ['A', 'B'].map(device => cited.find(row => row.device === device && row.test_id === 'xx'));
   if (xx.some(row => !row)) throw Error('To identify a device, cite interpreted X/X evidence from both devices. Z/Z alone cannot distinguish these candidates.');
@@ -105,8 +105,8 @@ export function assessReport(report, evidence) {
   // The intervals must separate and contain the ideal candidate predictions.
   const supports = chosenRange[0] > otherRange[1] && chosenRange[1] === 1
     && otherRange[0] <= .5 && otherRange[1] >= .5;
-  return supports ? { title: 'Your evidence supports this identification.',
+  return supports ? { outcome: 'supported', title: 'Your evidence supports this identification.',
     message: `Device ${report.conclusion} keeps the matching pattern in X/X, while the other is consistent with roughly half matching. This supports the Bell candidate in this case; it is not a universal test for entanglement.` }
-    : { title: 'Revisit the strength of this conclusion.',
+    : { outcome: 'revise', title: 'Revisit the strength of this conclusion.',
       message: 'The cited patterns do not clearly support that identification under the two ideal candidate models. Check which device retains matching outputs, consider noise and sampling uncertainty, or report insufficient evidence.' };
 }
