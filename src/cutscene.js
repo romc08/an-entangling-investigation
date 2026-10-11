@@ -1,4 +1,4 @@
-import { parts } from './media/intro.js';
+import { parts } from '../assets/media/intro.js';
 
 // A Blob avoids relative media requests in Qollab. Each imported part is below
 // the file-size limit; the original MP4 bytes are reconstructed without edits.

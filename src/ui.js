@@ -1,6 +1,8 @@
 import { createGame } from './game.js';
 import { createWorkbench } from './workbench.js';
 import { createTrace } from './assistant.js';
+import { mountCardDragging } from './desk-cards.js';
+import { createTypewriter } from './typewriter.js';
 import { mountOpening } from './opening.js';
 import { notebookPage, reportContents, endingContents } from './case-panels.js';
 import { ART } from './assets.js';
@@ -20,6 +22,7 @@ export function mountGame(root, adapter) {
   let endingDestination = null;
   let opener = null;
   let selectedRecords = [];
+  let selectedCard = null;
   let notice = '';
   let readoutTimer;
   let hint = { stage: 'Welcome', text: 'The labels are missing, detective. Change the view. Follow the evidence. I’m on the line.' };
@@ -29,15 +32,16 @@ export function mountGame(root, adapter) {
   root.innerHTML = `
     <div class="game-shell" data-scene="opening">
       ${sprite('workbench', 'scene-background')}
-      <div class="provenance">${escape(adapter.label)}</div>
+      ${adapter.isDevelopment ? `<div class="provenance">${escape(adapter.label)}</div>` : ''}
       <main id="workspace" hidden>
         <section class="desk" aria-label="Investigation workbench">
-          <div class="scene-heading"><span>CONSERVATION LAB</span><span>AFTER HOURS / CASE 001</span></div>
           <div id="devices"></div>
-          <aside class="case-brief"><span class="eyebrow">CASE 001</span><h1>The missing labels.</h1><p id="objective"></p><span id="progress-count"></span></aside>
           <div id="desk-objects"></div>
+          <div id="evidence-cards" aria-label="Evidence on the desk"></div>
         </section>
-        <div class="scene-hud"><div><span id="lab-status" role="status" aria-live="polite"></span><p id="interaction-line" role="status" aria-live="polite"></p></div><button id="help" class="quiet" aria-haspopup="dialog">Field guide [?]</button></div>
+        <p id="lab-status" class="lab-alert" role="status" aria-live="polite" hidden></p>
+        <p id="desk-announcement" class="sr-only" role="status" aria-live="polite"></p>
+        <div class="scene-hud"><button id="help" class="quiet" aria-haspopup="dialog">Field guide [?]</button></div>
       </main>
       <footer>This effort is supported by Qollab &amp; IonQ</footer>
     </div>
@@ -48,13 +52,14 @@ export function mountGame(root, adapter) {
   const dialog = find('#desk-dialog');
   const ending = find('#ending-dialog');
   const state = () => game.snapshot();
+  const announce = text => { find('#desk-announcement').textContent = text; };
+  const speech = createTypewriter({
+    write: text => { if (overlay === 'trace') find('#hint-response').textContent = text; },
+  });
 
-  function goal(progress) {
-    if (progress.report) return 'Report filed. The archive awaits.';
-    if (!progress.evidence.length) return 'One Bell pair. One ordinary mixture. Restore their labels.';
-    if (!['A', 'B'].every(id => progress.evidence.some(row => row.device === id && row.test_id === 'xx'))) return 'Change the view. Compare both devices.';
-    if (progress.evidence.some(row => !hasInterpretation(row))) return 'Enter your observations in the notebook.';
-    return 'Evidence in hand. File your finding.';
+  function speak() {
+    find('#hint-accessible').textContent = hint.text;
+    speech.start(hint.text, matchMedia('(prefers-reduced-motion: reduce)').matches);
   }
 
   function instruction(progress, setup) {
@@ -62,7 +67,7 @@ export function mountGame(root, adapter) {
     if (progress.status === 'failed') return 'The lab could not collect this batch. Read the error above before starting a new run.';
     if (setup.reading) return 'Reading the stored measurement…';
     if (!setup.device) return 'Examine a device to begin.';
-    if (setup.result) return 'Record open. Add an observation in your notebook.';
+    if (setup.result) return `Evidence card ${setup.result.card.number} is in the ${setup.result.card.location}.`;
     if (!setup.prediction) return 'Choose a view. Place your prediction.';
     if (progress.status !== 'ready') return 'Waiting for the lab measurements…';
     return 'Pull the lever to uncover the record.';
@@ -76,21 +81,48 @@ export function mountGame(root, adapter) {
     const activeId = root.contains(document.activeElement) ? document.activeElement.id : '';
     find('.game-shell').dataset.scene = progress.phase === 'intro' ? 'opening' : 'workbench';
     find('#workspace').hidden = progress.phase === 'intro';
-    find('#objective').textContent = goal(progress);
-    find('#progress-count').textContent = `${progress.evidence.length}/4 RECORDS`;
-    find('#lab-status').textContent = progress.status === 'loading' ? 'Collecting the case measurements…' : progress.status === 'failed' ? progress.error : progress.status === 'ready' ? 'Measurements collected' : 'Lab standing by';
-    find('#lab-status').classList.toggle('error', progress.status === 'failed');
+    find('#lab-status').textContent = progress.status === 'failed' ? progress.error : '';
+    find('#lab-status').hidden = progress.status !== 'failed';
     // Keep large embedded images and their hit targets mounted between actions.
     if (!find('#device-A')) {
-      find('#devices').innerHTML = ['A', 'B'].map(id => `<button id="device-${id}" class="scene-object device-object device-${id}" data-device="${id}" aria-label="Examine Device ${id}" aria-haspopup="dialog">${sprite(`device${id}`)}<span class="object-label">${sprite(id === 'A' ? 'label1' : 'label2')}<span>Device ${id}</span></span></button>`).join('');
+      find('#devices').innerHTML = ['A', 'B'].map(id => `<button id="device-${id}" class="scene-object device-object device-${id}" data-device="${id}" aria-label="Examine Device ${id}" aria-haspopup="dialog">${sprite(`device${id}`)}<span class="object-label">${sprite(id === 'A' ? 'label1' : 'label2')}</span></button>`).join('');
       find('#desk-objects').innerHTML = `
-      <button id="trace" class="scene-object phone-object" aria-label="Call Trace" aria-haspopup="dialog">${sprite('phone')}<span class="object-label">${sprite('label3')}<span>Call Trace</span></span></button>
-      <button id="notebook" class="scene-object notebook-object" aria-label="Open evidence notebook" aria-haspopup="dialog">${sprite('notebook')}<span class="object-label">${sprite('label4')}<span>Field notes</span></span></button>
-      <button id="report" class="scene-object report-object" aria-label="Open final report" aria-haspopup="dialog"><span class="report-paper" aria-hidden="true"><span>MUSEUM ARCHIVE</span><b>CASE<br>001</b><i>FINAL FINDING</i></span><span class="object-label">${sprite('label5')}<span>Final finding</span></span></button>`;
+      <button id="trace" class="scene-object phone-object" aria-label="Call Trace" aria-haspopup="dialog">${sprite('phone')}<span class="object-label">${sprite('label3')}</span></button>
+      <button id="notebook" class="scene-object notebook-object" aria-label="Open evidence notebook" aria-haspopup="dialog">${sprite('notebook')}<span class="object-label">${sprite('label4')}</span></button>
+      <button id="report" class="scene-object report-object" aria-label="Open final report" aria-haspopup="dialog">${sprite('report')}<span class="object-label">${sprite('label5')}</span></button>`;
     }
-    find('#interaction-line').textContent = instruction(progress, setup);
+    renderCards(progress.evidence);
     if (overlay === 'device') renderInstrument();
     if (activeId) find(`#${activeId}`)?.focus({ preventScroll: true });
+  }
+
+  function renderCards(records) {
+    const area = find('#evidence-cards');
+    area.querySelectorAll('[data-desk-card]').forEach(button => {
+      if (!records.some(row => row.id === button.dataset.deskCard && row.card.location === 'desk')) button.remove();
+    });
+    for (const row of records.filter(item => item.card.location === 'desk')) {
+      let button = find(`#card-${row.id}`);
+      if (!button) {
+        area.insertAdjacentHTML('beforeend', `<button id="card-${row.id}" class="evidence-card" data-desk-card="${row.id}" aria-label="Evidence card ${row.card.number}: Device ${row.device}, ${row.test_id.toUpperCase()}. Open or drag to notebook or final report." aria-haspopup="dialog" title="Open, or drag to notebook / final report">${sprite(`evidence${row.card.number}`)}<span class="card-caption" aria-hidden="true">${row.device} · ${row.test_id.toUpperCase()}</span></button>`);
+        button = find(`#card-${row.id}`);
+      }
+      button.style.left = `${row.card.x * 100}%`;
+      button.style.top = `${row.card.y * 100}%`;
+      button.style.setProperty('--card-angle', `${[-7, 5, 3, -5][row.card.number - 1]}deg`);
+    }
+  }
+
+  function moveCard(id, destination, position) {
+    game.moveEvidence(id, destination, position);
+    reportDraft.citations = reportDraft.citations.filter(citation => state().evidence.some(row => row.id === citation && row.card.location === 'report'));
+    selectedRecords = selectedRecords.filter(record => state().evidence.some(row => row.id === record && row.card.location === 'notebook'));
+    renderDesk();
+  }
+
+  function openCard(id, source) {
+    selectedCard = id;
+    setPanel('card', source);
   }
 
   function renderInstrument() {
@@ -103,7 +135,7 @@ export function mountGame(root, adapter) {
       <div class="setting-switch" role="group" aria-label="Measurement view">${Object.keys(TESTS).map(id => `<button id="setting-${id}" data-test="${id}" aria-pressed="${id === setup.testId}" ${setup.reading ? 'disabled' : ''}><b>${id.toUpperCase().split('').join('/')}</b><span>${id === 'zz' ? 'Original view' : 'Rotated view'}</span></button>`).join('')}</div>
 
       <h3>Your prediction</h3><div class="prediction-tokens" role="group" aria-label="Prediction tokens">${Object.keys(PREDICTIONS).map(id => `<button id="token-${id}" data-prediction="${id}" aria-pressed="${(setup.result?.prediction || setup.prediction) === id}" ${!setup.device || setup.reading || setup.result ? 'disabled' : ''}><span class="token-symbol" aria-hidden="true">${tokenIcons[id]}</span><span>${tokenLabels[id]}</span></button>`).join('')}</div>
-      <button id="lever" class="lever ${setup.reading ? 'pulled' : ''}" ${progress.status !== 'ready' || !setup.device || !setup.prediction || setup.result || setup.reading ? 'disabled' : ''}><span class="lever-slot" aria-hidden="true"><i></i></span><span><b>${setup.reading ? 'Reading…' : setup.result ? 'Filed' : 'Uncover'}</b></span><span aria-hidden="true">↓</span></button>`;
+      <button id="lever" class="lever ${setup.reading ? 'pulled' : ''}" ${progress.status !== 'ready' || !setup.device || !setup.prediction || setup.result || setup.reading ? 'disabled' : ''}><span class="lever-slot" aria-hidden="true"><i></i></span><span><b>${setup.reading ? 'Reading…' : setup.result ? 'Opened' : 'Uncover'}</b></span><span aria-hidden="true">↓</span></button>`;
     renderDetector(setup);
     find('#instrument-status').textContent = progress.status === 'failed' ? progress.error : instruction(progress, setup);
     if (activeId) find(`#${activeId}`)?.focus({ preventScroll: true });
@@ -119,7 +151,7 @@ export function mountGame(root, adapter) {
       find('#detector-screen').innerHTML = `<div class="crt-screen"><span class="screen-label">${setup.device ? `DEVICE ${setup.device} / ${setup.testId.toUpperCase()}` : 'INSTRUMENT OFFLINE'}</span><div class="sealed-mark" aria-hidden="true">${setup.device ? '[ ? ]' : '— —'}</div><p>${setup.device ? 'Record sealed' : 'Awaiting a device'}</p><small>${setup.device ? 'Place your prediction before opening.' : 'Connect Device A or B on the left.'}</small></div><div class="detector-idle">LEFT digit → RIGHT digit</div>`;
       return;
     }
-    find('#detector-screen').innerHTML = `<div class="crt-screen"><span class="screen-label">DEVICE ${row.device} / ${row.test_id.toUpperCase()} / ${row.statistics.shots} SHOTS</span>${bars(row)}<div class="screen-stat"><b>${percent(row.statistics.match_rate)}</b><span>matching outputs</span></div><small>Observed counts · Left then Right</small></div><button id="inspect-result" class="detector-button" aria-haspopup="dialog">Enter in notebook ↗</button>`;
+    find('#detector-screen').innerHTML = `<div class="crt-screen"><span class="screen-label">DEVICE ${row.device} / ${row.test_id.toUpperCase()} / ${row.statistics.shots} SHOTS</span>${bars(row)}<div class="screen-stat"><b>${percent(row.statistics.match_rate)}</b><span>matching outputs</span></div><small>Observed counts · Left then Right</small></div><button id="inspect-result" class="detector-button" aria-haspopup="dialog">Inspect card ${row.card.number} ↗</button>`;
   }
 
   function bars(row) {
@@ -142,32 +174,63 @@ export function mountGame(root, adapter) {
   }
 
   function renderPanel() {
+    speech.stop();
     const setup = bench.snapshot();
-    const panels = { device: ['MUSEUM INSTRUMENTS / SERIES 01', `Device ${setup.device}`], notebook: ['PRIVATE & CONFIDENTIAL', 'Field notes'], trace: ['NIGHT EXCHANGE / EXT. 001', 'Trace'], report: ['ARCHIVE COPY', 'Final finding'], help: ['THE INVESTIGATION', 'Your field guide'] };
+    const card = state().evidence.find(row => row.id === selectedCard);
+    const panels = { card: ['', `Evidence card ${card?.card.number}`], device: ['', `Device ${setup.device}`], notebook: ['PRIVATE & CONFIDENTIAL', 'Field notes'], trace: ['', 'Trace'], report: ['ARCHIVE COPY', 'Final finding'], help: ['THE INVESTIGATION', 'Your field guide'] };
     const [eyebrow, title] = panels[overlay];
     find('#dialog-eyebrow').textContent = eyebrow;
+    find('#dialog-eyebrow').hidden = !eyebrow;
     find('#dialog-title').textContent = title;
     dialog.dataset.panel = overlay;
     dialog.dataset.device = setup.device || 'A';
     find('#dialog-body').innerHTML = overlay === 'device' ? `<div class="instrument-layout"><section class="console" aria-label="Measurement controls"><div id="controls"></div></section><section class="detector" aria-label="Measurement readout"><div id="detector-screen"></div></section></div><p id="instrument-status" class="instrument-status" role="status"></p><details class="batch-note"><summary>Lab notes</summary><p>The lab collects all measurements together. You choose the order to uncover them. This lever opens a stored record; it never sends another job.</p></details>` : overlay === 'notebook' ? notebookPanel() : overlay === 'trace' ? tracePanel() : overlay === 'report' ? reportPanel() : helpPanel();
+    if (overlay === 'card') find('#dialog-body').innerHTML = ticket(card);
+    if (overlay === 'trace') speak();
     if (overlay === 'device') renderInstrument();
     if (overlay === 'notebook' && setup.device) find('#dialog-body').insertAdjacentHTML('beforeend', `<button id="back-device" class="secondary">← Return to Device ${setup.device}</button>`);
   }
 
   function notebookPanel() {
-    const records = state().evidence;
-    if (!records.length) return `<div class="empty-panel"><span aria-hidden="true">▤</span><h3>A fresh page.</h3><p>Your first measurement belongs here. Examine a device.</p></div>`;
+    const records = state().evidence.filter(row => row.card.location === 'notebook');
+    if (!records.length) return `<div class="empty-panel"><span aria-hidden="true">▤</span><h3>A fresh page.</h3><p>Drag a desk card into the notebook to file it here.</p></div>`;
     if (!selectedRecords.length) selectedRecords = [records.at(-1).id];
     return `<p class="panel-intro">Compare two records. Mark what you observe.</p><div class="record-tabs" role="group" aria-label="Records to inspect">${records.map(row => `<button data-record="${row.id}" aria-pressed="${selectedRecords.includes(row.id)}">${row.device} · ${row.test_id.toUpperCase()}<span>${hasInterpretation(row) ? '✓' : '○'}</span></button>`).join('')}</div><div class="tickets ${selectedRecords.length === 2 ? 'comparison' : ''}">${selectedRecords.map(id => records.find(row => row.id === id)).filter(Boolean).map(ticket).join('')}</div>`;
   }
 
-  function ticket(row) { return notebookPage(row, drafts[row.id], bars); }
+  function ticket(row) {
+    return `<div class="evidence-page">${notebookPage(row, drafts[row.id], bars)}<div class="card-actions" aria-label="Move evidence card ${row.card.number}">${[['desk', 'Return to desk'], ['notebook', 'File in notebook'], ['report', 'Attach to report']].filter(([place]) => place !== row.card.location).map(([place, label]) => `<button type="button" class="secondary" data-move-card="${row.id}" data-destination="${place}">${label}</button>`).join('')}</div></div>`;
+  }
 
   function tracePanel() {
-    return `<div class="trace-dialogue">${sprite('phone', 'trace-portrait')}<div><span class="eyebrow">${escape(hint.stage.toUpperCase())}</span><p id="hint-response" role="status" aria-live="polite">${escape(hint.text)}</p></div></div><div class="hint-choices"><button data-hint="challenge">Challenge my theory</button><button data-hint="explain">Explain this result</button><button data-hint="next">Suggest a next step</button></div><p class="exchange-status">● Line connected</p>`;
+    return `<div class="trace-dialogue">${sprite('phone', 'trace-portrait')}<div><span class="eyebrow">${escape(hint.stage.toUpperCase())}</span><p id="hint-response" aria-hidden="true"></p><p id="hint-accessible" class="sr-only" role="status" aria-live="polite"></p></div></div><div class="hint-choices"><button data-hint="challenge">Challenge my theory</button><button data-hint="explain">Explain this result</button><button data-hint="next">Suggest a next step</button></div><p class="exchange-status">● Line connected</p>`;
   }
 
   function reportPanel() { return reportContents(state(), reportDraft, sprite); }
+
+  function sealReport() {
+    // Read the current controls as well as retaining drafts between panels.
+    // Do not rely on a native form submission: embedded hosts may block it
+    // before our submit handler ever runs, even with preventDefault().
+    const form = find('#report-form');
+    Object.assign(reportDraft, {
+      conclusion: form.querySelector('[name="conclusion"]:checked')?.value || '',
+      citations: [...form.querySelectorAll('[name="citation"]:checked:not(:disabled)')].map(input => input.value),
+      reasoningId: form.querySelector('[name="reason"]:checked')?.value || '',
+      reasoning: find('#report-reasoning').value,
+    });
+    game.submitReport(reportDraft);
+    showEnding();
+    renderDesk();
+  }
+
+  function saveNote(id) {
+    game.interpret(id, find(`#note-${id}`).value);
+    renderPanel();
+    find(`#note-${id}`).closest('details').open = true;
+    find(`#note-${id}`).focus();
+    renderDesk();
+  }
 
   function showEnding() {
     dialog.close();
@@ -184,13 +247,14 @@ export function mountGame(root, adapter) {
   });
 
   function helpPanel() {
-    return `<ol class="help-steps"><li><b>Connect a device.</b> Click Device A or B. Their labels stay fixed for this run.</li><li><b>Choose a view.</b> The linked dials turn both measurements together: original (Z/Z, 0°) or rotated (X/X, 90°).</li><li><b>Make a prediction.</b> Place one of the three tokens. Being unsure is welcome.</li><li><b>Pull the lever.</b> Uncover a stored record, then inspect its ticket.</li><li><b>Collect your evidence.</b> Pin an observation in the notebook. Open two tickets to compare.</li><li><b>Restore the labels.</b> Cite your evidence in the report, or explain why it is insufficient.</li></ol><p>The lab submits one batch for the entire case. Opening records never sends another quantum job. Closing panels does not lose your work; reloading the page does. Trace uses scripted hints based on your discovered records.</p><p><b>Keyboard:</b> Tab between objects, Enter or Space to activate, Escape to close a panel. The readout animation has a Skip button and respects reduced motion.</p><details class="circuit-notes"><summary>Optional circuit notes & limits</summary><p>Left is qubit 0; Right is qubit 1. Every shot prepares a fresh state. The Bell preparation uses H followed by CNOT to prepare |Φ+⟩ = (|00⟩ + |11⟩)/√2. The ordinary mixture combines equal shots of separate |00⟩ and |11⟩ product-state preparations, without an ancilla.</p><p>Ry(−angle) precedes measurement. Qiskit bitstrings are reversed once in Python so displayed digits always mean Left then Right. Both sources use two circuits per setting and report their actual combined counts.</p><p>Ideally, Z/Z produces half 00 and half 11 for both sources. In X/X, the Bell source retains this pattern while the mixture produces all four outcomes equally. These settings distinguish these specified candidates, not arbitrary states.</p><p>The batch also includes CHSH: Left 0°/90°, Right 45°/−45°. E = (matching − differing)/shots and S = E00 + E01 + E10 − E11, ideally 2√2 for the Bell source. The classical expectation bound |S| ≤ 2 requires CHSH assumptions including locality, independent setting choices and fair sampling. Finite samples require uncertainty analysis. Low S does not prove separability. Simulator results do not demonstrate computational advantage. The CHSH interface is deferred.</p></details>`;
+    return `<ol class="help-steps"><li><b>Connect a device.</b> Click Device A or B. Their labels stay fixed for this run.</li><li><b>Choose a view.</b> The linked dials turn both measurements together: original (Z/Z, 0°) or rotated (X/X, 90°).</li><li><b>Make a prediction.</b> Place one of the three tokens. Being unsure is welcome.</li><li><b>Pull the lever.</b> A numbered evidence card arrives on the desk.</li><li><b>Collect your evidence.</b> Drag cards into the notebook to compare and mark observations. Use Return to desk to take one back out.</li><li><b>Restore the labels.</b> Drag cards onto the final report, then select which to cite. You may also report insufficient evidence.</li></ol><p>The lab submits one batch for the entire case. Opening records never sends another quantum job. Closing panels does not lose your work; reloading the page does. Trace uses scripted hints based on your discovered records.</p><p><b>Keyboard:</b> Tab between objects, Enter or Space to open. Every card has filing buttons as an alternative to dragging. Escape closes a panel or cancels a drag. The readout animation has a Skip button and respects reduced motion.</p><details class="circuit-notes"><summary>Optional circuit notes & limits</summary><p>Left is qubit 0; Right is qubit 1. Every shot prepares a fresh state. The Bell preparation uses H followed by CNOT to prepare |Φ+⟩ = (|00⟩ + |11⟩)/√2. The ordinary mixture combines equal shots of separate |00⟩ and |11⟩ product-state preparations, without an ancilla.</p><p>Ry(−angle) precedes measurement. Qiskit bitstrings are reversed once in Python so displayed digits always mean Left then Right. Both sources use two circuits per setting and report their actual combined counts.</p><p>Ideally, Z/Z produces half 00 and half 11 for both sources. In X/X, the Bell source retains this pattern while the mixture produces all four outcomes equally. These settings distinguish these specified candidates, not arbitrary states.</p><p>The batch also includes CHSH: Left 0°/90°, Right 45°/−45°. E = (matching − differing)/shots and S = E00 + E01 + E10 − E11, ideally 2√2 for the Bell source. The classical expectation bound |S| ≤ 2 requires CHSH assumptions including locality, independent setting choices and fair sampling. Finite samples require uncertainty analysis. Low S does not prove separability. Simulator results do not demonstrate computational advantage. The CHSH interface is deferred.</p></details>`;
   }
 
   dialog.addEventListener('close', () => {
+    speech.stop();
     overlay = null;
     find('#dialog-error').textContent = '';
-    if (!ending.open) find(`#${opener || 'notebook'}`)?.focus({ preventScroll: true });
+    if (!ending.open) (find(`#${opener || 'notebook'}`) || find('#notebook')).focus({ preventScroll: true });
   });
   // Native dialog provides focus containment and Escape handling.
   dialog.addEventListener('click', event => {
@@ -203,16 +267,13 @@ export function mountGame(root, adapter) {
     if (!bench.snapshot().reading) return;
     clearTimeout(readoutTimer);
     const row = bench.finishReadout();
-    notice = `Device ${row.device} · ${row.test_id.toUpperCase()} uncovered. Enter your observation.`;
+    notice = `Evidence card ${row.card.number} is on the desk.`;
     renderDesk();
-    if (dialog.open && overlay === 'notebook') {
-      const tabs = find('.record-tabs');
-      // Leave existing tickets, expanded notes and keyboard focus intact.
-      if (tabs) tabs.insertAdjacentHTML('beforeend', `<button data-record="${row.id}" aria-pressed="false">${row.device} · ${row.test_id.toUpperCase()}<span>○</span></button>`);
-      else renderPanel();
-    }
-    // Opening help while the scan runs must not steal focus out of its dialog.
+    announce(`${notice} Drag it to the notebook or final report, or open it for filing buttons.`);
+    // Keep the device readout open for inspection; only the player closes it.
+    // Other open panels keep their drafts and focus as the desk card arrives.
     if (dialog.open && overlay === 'device') find('#inspect-result').focus({ preventScroll: true });
+    if (!dialog.open && !ending.open) find(`#card-${row.id}`).focus({ preventScroll: true });
   }
   root.addEventListener('animationend', event => {
     if (event.animationName === 'readout-scan' && event.target.classList.contains('scan-beam')) finishReadout();
@@ -237,6 +298,17 @@ export function mountGame(root, adapter) {
     if (!button || button.disabled) return;
     try {
       find('#dialog-error').textContent = '';
+      if (button.dataset.deskCard || button.dataset.inspectCard) { openCard(button.dataset.deskCard || button.dataset.inspectCard, button); return; }
+      if (button.dataset.moveCard) {
+        const destination = button.dataset.destination;
+        moveCard(button.dataset.moveCard, destination);
+        opener = destination === 'desk' ? `card-${button.dataset.moveCard}` : destination;
+        dialog.close();
+        announce(`Evidence moved to the ${destination}.`);
+        return;
+      }
+      if (button.id === 'seal-report') { event.preventDefault(); sealReport(); return; }
+      if (button.dataset.saveNote) { event.preventDefault(); saveNote(button.dataset.saveNote); return; }
       if (button.id === 'view-verdict') { showEnding(); return; }
       if (button.id === 'ending-return' || button.id === 'ending-evidence') {
         endingDestination = button.id === 'ending-evidence' ? 'notebook' : state().report.feedback.outcome === 'revise' ? 'report' : null;
@@ -253,7 +325,7 @@ export function mountGame(root, adapter) {
       }
       if (button.id === 'back-device') { setPanel('device'); return; }
       if (['notebook', 'trace', 'report', 'help'].includes(button.id)) { setPanel(button.id, button); return; }
-      if (button.id === 'inspect-result') { selectedRecords = [bench.snapshot().result.id]; setPanel('notebook', button); return; }
+      if (button.id === 'inspect-result') { openCard(bench.snapshot().result.id, button); return; }
       if (button.dataset.record) {
         const id = button.dataset.record;
         if (selectedRecords.includes(id)) selectedRecords = selectedRecords.filter(value => value !== id);
@@ -272,7 +344,7 @@ export function mountGame(root, adapter) {
       if (button.dataset.hint) {
         const progress = state(); const setup = bench.snapshot();
         hint = trace(button.dataset.hint, { evidence: progress.evidence, status: progress.status, selectedDevice: setup.device || 'A', selectedTest: setup.testId });
-        find('#hint-response').textContent = hint.text;
+        speak();
         dialog.querySelector('.trace-dialogue .eyebrow').textContent = hint.stage.toUpperCase();
         return;
       }
@@ -290,28 +362,22 @@ export function mountGame(root, adapter) {
       if (bench.snapshot().reading) find('#skip-readout').focus({ preventScroll: true });
     } catch (error) {
       if (dialog.open) showPanelError(error.message);
-      else { notice = error.message; find('#interaction-line').textContent = notice; }
+      else { notice = error.message; announce(notice); }
     }
   });
   root.addEventListener('submit', event => {
     event.preventDefault();
     try {
       if (event.target.dataset.note) {
-        const id = event.target.dataset.note;
-        game.interpret(id, find(`#note-${id}`).value);
-        renderPanel();
-        // Reopen the details element before focusing the optional text field.
-        find(`#note-${id}`).closest('details').open = true;
-        find(`#note-${id}`).focus();
+        saveNote(event.target.dataset.note);
       } else if (event.target.id === 'report-form') {
-        game.submitReport(reportDraft);
-        showEnding();
+        sealReport();
       }
       find('#dialog-error').textContent = '';
-      renderDesk();
     } catch (error) { showPanelError(error.message); }
   });
   renderDesk();
+  mountCardDragging(root, { move: moveCard, announce });
   mountOpening(root, {
     onStart: () => { game.load().then(renderDesk); },
     onEnter: () => { game.start(); renderDesk(); },

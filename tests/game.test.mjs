@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createGame } from '../game.js';
-import { createWorkbench } from '../workbench.js';
-import { createTrace } from '../assistant.js';
-import { summarizeCounts, validateBank, assessReport } from '../evidence.js';
-import { createQollabAdapter } from '../qollab-adapter.js';
+import { createGame } from '../src/game.js';
+import { createWorkbench } from '../src/workbench.js';
+import { createTrace } from '../src/assistant.js';
+import { summarizeCounts, validateBank, assessReport } from '../src/evidence.js';
+import { createQollabAdapter } from '../src/qollab-adapter.js';
 import { createSampleAdapter } from '../dev/sample-adapter.js';
 
 const sample = () => createSampleAdapter({ delay: 0 });
@@ -17,6 +17,7 @@ async function ready(random = () => 0) {
 function interpreted(game, device, id) {
   const row = game.reveal(device, id, 'unsure');
   game.interpret(row.id, 'The pattern needs comparison with the other setting.');
+  game.moveEvidence(row.id, 'report');
   return row;
 }
 
@@ -63,9 +64,9 @@ test('failure is terminal for this run, explains restart, and never supplies sam
 test('reports need interpreted evidence, both X/X records for identification, and reasoning', async () => {
   const game = await ready();
   const report = { conclusion: 'A', citations: ['A-xx', 'B-xx'], reasoning: 'A retains matching while B becomes approximately uniform in X/X.' };
-  assert.throws(() => game.submitReport(report), /at least one/);
+  assert.throws(() => game.submitReport(report), /Move the cited/);
   interpreted(game, 'A', 'xx');
-  assert.throws(() => game.submitReport(report), /both devices/);
+  assert.throws(() => game.submitReport({ ...report, citations: ['A-xx'] }), /both devices/);
   interpreted(game, 'B', 'xx');
   assert.match(game.submitReport(report).title, /supports/);
   assert.match(game.submitReport({ ...report, conclusion: 'B' }).title, /Revisit/);
@@ -186,6 +187,7 @@ test('pinned observations are explicit, checked against evidence, and enable rep
   assert.throws(() => game.recordClaim('A-xx', 'matching'), /Uncover/);
   game.reveal('A', 'xx', 'mixed'); // A mistaken prediction does not penalize discovery.
   game.reveal('B', 'xx', 'matching');
+  game.moveEvidence('A-xx', 'report'); game.moveEvidence('B-xx', 'report');
   const report = { conclusion: 'A', citations: ['A-xx', 'B-xx'], reasoningId: 'compare', reasoning: '' };
   assert.throws(() => game.submitReport(report), /at least one/);
   assert.throws(() => game.recordClaim('A-xx', 'half'), /50%/);
@@ -202,10 +204,40 @@ test('pinned observations are explicit, checked against evidence, and enable rep
 });
 
 // The cinematic shell cannot duplicate the lab start or desk entry.
-import { createOpeningFlow } from '../scenes.js';
-import { parts, byteLength, sha256 } from '../media/intro.js';
+import { createOpeningFlow } from '../src/scenes.js';
+import { parts, byteLength, sha256 } from '../assets/media/intro.js';
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
+
+test('production and preview imports resolve within the organized project', () => {
+  const root = new URL('../', import.meta.url);
+  function graph(entry) {
+    const seen = new Set();
+    function visit(file) {
+      assert.ok(file.href.startsWith(root.href), 'Import leaves the project');
+      if (seen.has(file.href)) return;
+      seen.add(file.href);
+      const source = readFileSync(file, 'utf8');
+      for (const [, path] of source.matchAll(/(?:from\s+|import\s*)['"]([^'"]+)['"]/g)) {
+        if (path.startsWith('.')) visit(new URL(path, file));
+        else {
+          assert.equal(file.href, new URL('main.js', root).href);
+          assert.equal(path, 'quantum.experiments');
+        }
+      }
+    }
+    visit(new URL(entry, root));
+    return seen;
+  }
+  const production = graph('main.js');
+  const preview = graph('dev/main.js');
+  for (const path of ['src/ui.js', 'assets/art/evidence1.js', 'assets/media/intro.js']) {
+    assert.ok(production.has(new URL(path, root).href));
+    assert.ok(preview.has(new URL(path, root).href));
+  }
+  assert.ok(!preview.has(new URL('main.js', root).href));
+  assert.ok(!preview.has(new URL('src/qollab-adapter.js', root).href));
+});
 
 function openingHarness(overrides = {}) {
   const calls = [];
@@ -264,9 +296,61 @@ test('runtime media preserves the supplied film exactly; each asset module is be
   const film = Buffer.concat(parts.map(part => Buffer.from(part, 'base64')));
   assert.equal(film.length, byteLength);
   assert.equal(createHash('sha256').update(film).digest('hex'), sha256);
-  assert.deepEqual(film, readFileSync(new URL('../cutscenes/full_intro_cutscene.mp4', import.meta.url)));
-  for (const directory of ['art', 'media']) {
+  assert.deepEqual(film, readFileSync(new URL('../artwork/cutscenes/full_intro_cutscene.mp4', import.meta.url)));
+  for (const directory of ['assets/art', 'assets/media']) {
     const folder = new URL(`../${directory}/`, import.meta.url);
     for (const name of readdirSync(folder)) assert.ok(statSync(new URL(name, folder)).size < 2_000_000, `${directory}/${name} exceeds the upload budget`);
   }
+});
+
+test('cards are numbered in discovery order, move without data loss, and gate report citations', async () => {
+  let calls = 0;
+  const game = createGame({ load: () => { calls++; return sample().load(); } }, () => 0);
+  await game.load();
+  const order = [['B', 'xx'], ['A', 'zz'], ['A', 'xx'], ['B', 'zz']];
+  order.forEach(([device, testId], i) => {
+    const row = game.reveal(device, testId, 'unsure');
+    assert.equal(row.card.number, i + 1);
+    assert.equal(row.card.location, 'desk');
+    assert.equal(game.reveal(device, testId, 'matching').card.number, i + 1);
+  });
+  const original = game.snapshot().evidence[0];
+  game.recordClaim('B-xx', 'half');
+  game.interpret('B-xx', 'About half of this device’s outputs match.');
+  const report = { conclusion: 'insufficient', citations: ['B-xx'], reasoningId: 'limited' };
+  assert.throws(() => game.submitReport(report), /Move the cited/);
+  game.moveEvidence('B-xx', 'notebook');
+  assert.throws(() => game.submitReport(report), /Move the cited/);
+  game.moveEvidence('B-xx', 'desk', { x: -1, y: 9 });
+  let row = game.snapshot().evidence[0];
+  assert.equal(row.card.x, .24); assert.equal(row.card.y, .78);
+  assert.equal(row.claim, 'half'); assert.match(row.interpretation, /About half/);
+  assert.deepEqual(row.counts, original.counts); assert.deepEqual(row.provenance, original.provenance);
+  game.moveEvidence('B-xx', 'report');
+  assert.equal(game.submitReport(report).outcome, 'inconclusive');
+  game.moveEvidence('B-xx', 'desk');
+  assert.equal(game.snapshot().report, null);
+  assert.throws(() => game.submitReport(report), /Move the cited/);
+  assert.throws(() => game.moveEvidence('missing', 'desk'), /Uncover/);
+  assert.throws(() => game.moveEvidence('B-xx', 'hidden'), /Choose/);
+  assert.throws(() => game.moveEvidence('B-xx', 'desk', { x: NaN, y: 0 }), /Invalid/);
+  assert.equal(calls, 1); assert.equal(game.snapshot().evidence.length, 4);
+});
+
+import { createTypewriter } from '../src/typewriter.js';
+test('Trace types one character, cancels stale lines, and supports instant/reduced-motion text', () => {
+  let next = 0, text = '', completed = 0;
+  const pending = new Map();
+  const speech = createTypewriter({ write: value => { text = value; }, complete: () => completed++,
+    schedule: callback => { pending.set(++next, callback); return next; }, cancel: id => pending.delete(id) });
+  const tick = () => { const [id, callback] = pending.entries().next().value; pending.delete(id); callback(); };
+  speech.start('A🔎B'); tick(); assert.equal(text, 'A'); tick(); assert.equal(text, 'A🔎');
+  const stale = pending.values().next().value;
+  speech.start('New'); stale(); assert.equal(text, '');
+  tick(); assert.equal(text, 'N');
+  tick(); tick(); assert.equal(text, 'New'); assert.equal(pending.size, 0);
+  speech.start('Stopped'); speech.stop(); assert.equal(pending.size, 0);
+  speech.start('Instant', true); assert.equal(text, 'Instant'); assert.equal(pending.size, 0);
+  speech.start('OK'); tick(); tick(); assert.equal(text, 'OK'); assert.equal(pending.size, 0);
+  assert.equal(completed, 3);
 });

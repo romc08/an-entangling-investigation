@@ -1,4 +1,4 @@
-import { mountGame } from '../ui.js';
+import { mountGame } from '../src/ui.js';
 import { createSampleAdapter } from './sample-adapter.js';
 
 // ?fail=1 exercises the failure screen without sending a quantum job.

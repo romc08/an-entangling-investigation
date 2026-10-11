@@ -1,8 +1,9 @@
-import { summarizeCounts } from '../evidence.js';
+import { summarizeCounts } from '../src/evidence.js';
 
 // Authored, deterministic interface fixtures. These are NOT Qiskit results.
 export function createSampleAdapter({ fail = false, delay = 450 } = {}) {
   return {
+    isDevelopment: true,
     label: 'Development preview — sample data',
     async load() {
       await new Promise(resolve => setTimeout(resolve, delay));
